@@ -75,8 +75,8 @@ if __name__ == "__main__":
         train(
             csv_path=DATA_PATH, 
             model_save_path=SAVE_PATH, 
-            epochs=20,       # Deep training for research analysis
-            batch_size=2048, # Optimized for 15GB GPU memory
+            epochs=12,       # Trimmed to 12 based on plateau observation
+            batch_size=2048, # Optimized for 15GB GPU
             lr=0.001
         )
     else:

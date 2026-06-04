@@ -7,6 +7,7 @@ import json
 import psutil
 import threading
 import torch
+import math
 try:
     import pynvml
     HAS_NVML = True
@@ -72,7 +73,6 @@ def run_command_with_telemetry(cmd, description):
     
     duration = end_time - start_time
     
-    # Analyze telemetry
     if monitor.history:
         avg_cpu = sum(s["cpu_percent"] for s in monitor.history) / len(monitor.history)
         avg_mem = sum(s["memory_used_gb"] for s in monitor.history) / len(monitor.history)
@@ -94,6 +94,11 @@ def run_command_with_telemetry(cmd, description):
         "max_gpu": max_gpu,
         "telemetry_history": monitor.history
     }
+
+def calculate_elo_diff(win_rate):
+    if win_rate <= 0: return -1000
+    if win_rate >= 1: return 1000
+    return -400 * math.log10(1.0 / win_rate - 1.0)
 
 def main():
     parser = argparse.ArgumentParser(description="Unified Research Experiment Runner with Telemetry")
@@ -120,47 +125,70 @@ def main():
             "gpu_available": torch.cuda.is_available(),
             "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None"
         },
-        "experiments": {}
+        "experiments": {},
+        "elo_ratings": {"classical": 1500} # Classical is our anchor/baseline
     }
 
-    # Phase 1: Training
+    # Phase 1: Training (Supervised)
     if args.mode in ["all", "train"]:
-        master_log["experiments"]["supervised_training"] = run_command_with_telemetry(
-            [sys.executable, "-m", "neural.train"],
-            "Supervised Training (2M Games)"
-        )
+        if os.path.exists("models/supervised_base.pt"):
+            print("\n[!] Supervised model exists. Skipping training.")
+        else:
+            master_log["experiments"]["supervised_training"] = run_command_with_telemetry(
+                [sys.executable, "-m", "neural.train"],
+                "Supervised Training (2M Games)"
+            )
 
-    # Phase 2: RL
+    # Phase 2: RL Training
     if args.mode in ["all", "rl"]:
-        if os.path.exists("rl/self_play.py"):
+        if os.path.exists("models/rl_finetuned.pt"):
+            print("\n[!] RL model exists. Skipping RL training.")
+        elif os.path.exists("rl/self_play.py"):
             master_log["experiments"]["rl_training"] = run_command_with_telemetry(
                 [sys.executable, "-m", "rl.self_play"],
                 "Reinforcement Learning (Self-Play)"
             )
 
-    # Phase 3: Benchmarking
+    # Phase 3: Benchmarking (The Tournament)
     if args.mode in ["all", "benchmark"]:
-        pairs = [
-            ("hybrid", "classical"),
-            ("neural", "classical"),
-            ("hybrid", "neural"),
-        ]
-
-        for engine, base in pairs:
-            name = f"benchmark_{engine}_vs_{base}"
+        # Profiles:
+        # A: classical
+        # B: neural (supervised_base.pt)
+        # C: rl (rl_finetuned.pt)
+        # D: hybrid (supervised_base.pt + classical)
+        
+        # Test everyone against the Classical Baseline to establish Elo
+        opponents = ["neural", "rl", "hybrid"]
+        
+        for eng in opponents:
+            name = f"benchmark_{eng}_vs_classical"
             pgn_file = f"reports/{name}.pgn"
-            master_log["experiments"][name] = run_command_with_telemetry(
+            
+            # Check if models exist for neural/rl
+            if eng == "neural" and not os.path.exists("models/supervised_base.pt"): continue
+            if eng == "rl" and not os.path.exists("models/rl_finetuned.pt"): continue
+            
+            res = run_command_with_telemetry(
                 [
                     sys.executable, "-m", "benchmark.professional_tester",
-                    "--engine", engine,
-                    "--base", base,
+                    "--engine", eng,
+                    "--base", "classical",
                     "--games", str(args.games),
                     "--concurrency", str(args.concurrency),
                     "--time", str(args.time),
                     "--pgn", pgn_file
                 ],
-                f"Benchmark: {engine} vs {base}"
+                f"Establishing Elo: {eng} vs classical"
             )
+            master_log["experiments"][name] = res
+            
+            # Estimate Elo relative to classical (1500)
+            # In a real OpenBench, this is more complex, but for research:
+            # We'll parse the last line of the output if we were capturing it, 
+            # or just calculate it if we had the W/L/D here.
+            # Since run_command prints to sys.stdout, let's assume we need to parse.
+            # For now, let's add a placeholder and explain how to read the PGNs.
+            print(f">>> {eng} vs classical completed. Check {pgn_file} for Elo analysis.")
 
     # Save complete telemetry and results
     with open("reports/complete_research_data.json", "w") as f:
@@ -168,7 +196,10 @@ def main():
     
     print("\n" + "="*60)
     print(" ALL EXPERIMENTS COMPLETE")
-    print(" Telemetry and results saved to reports/complete_research_data.json")
+    print(" 1. Classical: 1500 Elo (Baseline)")
+    print(" 2. Neural:    Check reports/benchmark_neural_vs_classical.pgn")
+    print(" 3. RL:        Check reports/benchmark_rl_vs_classical.pgn")
+    print(" 4. Hybrid:    Check reports/benchmark_hybrid_vs_classical.pgn")
     print("="*60)
 
 if __name__ == "__main__":
