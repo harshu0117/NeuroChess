@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.dll
+*.so
+*.dylib
+
+# Environments
+.env
+chessenv/
+venv/
+env/
+.venv/
+bin/
+lib/
+share/
+Include/
+Scripts/
+
+# Data and Models
+data/*.csv
+data/*.json
+!data/fetch_data.py
+models/*.pt
+models/*.pth
+
+# Research Reports and Outputs
+reports/
+benchmark_results.pgn
+*.pgn
+complete_research_data.json
+experiment_metadata.json
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
