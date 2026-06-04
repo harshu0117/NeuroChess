@@ -11,7 +11,7 @@ def train(csv_path, model_save_path, epochs=10, batch_size=64, lr=0.001):
     
     # Initialize components
     dataset = ChessDataset(csv_path)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     
     model = ChessResNet().to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -75,8 +75,8 @@ if __name__ == "__main__":
         train(
             csv_path=DATA_PATH, 
             model_save_path=SAVE_PATH, 
-            epochs=5,       # 5 epochs is a good start for 200k rows
-            batch_size=128, # Larger batch size for efficiency
+            epochs=20,       # Deep training for research analysis
+            batch_size=2048, # Optimized for 15GB GPU memory
             lr=0.001
         )
     else:

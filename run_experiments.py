@@ -106,6 +106,13 @@ def main():
     os.makedirs("models", exist_ok=True)
     os.makedirs("reports", exist_ok=True)
 
+    # Pre-flight Check
+    DATA_PATH = 'data/maia_chess.csv'
+    if args.mode in ["all", "train"] and not os.path.exists(DATA_PATH):
+        print(f"\n[!] ERROR: Dataset not found at {DATA_PATH}")
+        print("[!] Please run 'python -m data.fetch_data' before starting the experiment.")
+        sys.exit(1)
+
     master_log = {
         "hardware_info": {
             "cpu_count": psutil.cpu_count(),
