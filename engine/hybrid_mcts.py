@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import chess
 import math
+import time
 from engine.encoder import BoardEncoder
 from engine.evaluation import evaluate_board
 
@@ -59,9 +60,6 @@ class HybridMCTSNode:
 
 class HybridMCTSEngine:
     def __init__(self, model, encoder, c_puct=1.4, hybrid_weight=0.3):
-        """
-        hybrid_weight: How much weight to give to classical evaluation (0.0 to 1.0)
-        """
         self.model = model
         self.encoder = encoder
         self.c_puct = c_puct
@@ -71,39 +69,38 @@ class HybridMCTSEngine:
         self.model.eval()
 
     def _normalize_classical_eval(self, board):
-        """
-        Normalizes centipawn score to [-1, 1] range using tanh.
-        """
         score = evaluate_board(board)
-        # Perspective: evaluate_board returns score from White's POV.
-        # If it's Black's turn, we want to see it from Black's POV.
         if board.turn == chess.BLACK:
             score = -score
-            
-        # 400 CP is a common scaling factor
         return math.tanh(score / 400.0)
 
-    def search(self, board, iterations=400):
+    def search(self, board, iterations=None, time_limit=None):
+        start_time = time.time()
         root = HybridMCTSNode(board.copy())
         
         # Initial expansion of root
         with torch.no_grad():
             state_tensor = torch.from_numpy(self.encoder.encode(board)).unsqueeze(0).to(self.device)
             policy_logits, _ = self.model(state_tensor)
-            
             probs = self._get_legal_probs(board, policy_logits[0].cpu().numpy())
             root.expand(board, probs)
 
-        for _ in range(iterations):
+        count = 0
+        while True:
+            if iterations and count >= iterations:
+                break
+            if time_limit and (time.time() - start_time) >= time_limit:
+                break
+            if not iterations and not time_limit and count >= 400:
+                break
+                
             node = root
             search_board = board.copy()
 
-            # 1. Select
             while node.children:
                 action, node = node.select_child(self.c_puct)
                 search_board.push(self.encoder.decode_move(action, search_board))
 
-            # 2. Expand & Evaluate (Leaf)
             if not search_board.is_game_over():
                 with torch.no_grad():
                     state_tensor = torch.from_numpy(self.encoder.encode(search_board)).unsqueeze(0).to(self.device)
@@ -114,11 +111,8 @@ class HybridMCTSEngine:
                     
                     v_neural = value_tensor.item()
                     v_classical = self._normalize_classical_eval(search_board)
-                    
-                    # Combine evaluations
                     value = (1.0 - self.hybrid_weight) * v_neural + self.hybrid_weight * v_classical
             else:
-                # Terminal node evaluation
                 res = search_board.result()
                 if res == "1-0":
                     value = 1.0 if search_board.turn == chess.BLACK else -1.0
@@ -127,15 +121,15 @@ class HybridMCTSEngine:
                 else:
                     value = 0.0
 
-            # 3. Backpropagate
-            curr_value = value
+            curr_value = -value
             while node:
                 node.value_sum += curr_value
                 node.visit_count += 1
                 curr_value = -curr_value
                 node = node.parent
+            
+            count += 1
 
-        # Return the best move (most visited)
         if not root.children:
             return None
         best_action = max(root.children.items(), key=lambda x: x[1].visit_count)[0]
@@ -146,17 +140,12 @@ class HybridMCTSEngine:
         for move in board.legal_moves:
             idx = (move.from_square * 64) + move.to_square
             mask[idx] = True
-            
         logits[~mask] = -1e10
-        
-        # Classical Policy Augmentation: 
-        # Give a small boost to captures and checks in the priors
         for move in board.legal_moves:
             idx = (move.from_square * 64) + move.to_square
             if board.is_capture(move):
                 logits[idx] += 0.5
             if board.gives_check(move):
                 logits[idx] += 0.3
-        
         e_x = np.exp(logits - np.max(logits))
         return e_x / e_x.sum()

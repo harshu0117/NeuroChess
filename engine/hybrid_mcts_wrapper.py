@@ -58,13 +58,18 @@ def main():
                     for move_uci in parts[move_index + 1:]:
                         board.push_uci(move_uci)
         elif command == "go":
-            # MCTS uses iterations rather than depth
-            iterations = 400
+            iterations = None
+            time_limit = None
             for i, part in enumerate(parts):
                 if part == "nodes":
                     iterations = int(parts[i+1])
+                if part == "movetime":
+                    time_limit = int(parts[i+1]) / 1000.0
+            
+            if iterations is None and time_limit is None:
+                time_limit = 0.1
                     
-            move = engine.search(board, iterations=iterations)
+            move = engine.search(board, iterations=iterations, time_limit=time_limit)
             if move:
                 print(f"bestmove {move.uci()}")
             else:

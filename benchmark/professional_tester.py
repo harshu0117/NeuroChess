@@ -124,8 +124,8 @@ def load_openings(epd_file: Optional[str]) -> List[str]:
 
 def run_benchmark():
     parser = argparse.ArgumentParser(description="Professional Chess Engine Benchmarker")
-    parser.add_argument("--engine", choices=["hybrid", "neural", "classical"], default="hybrid", help="Engine to test")
-    parser.add_argument("--base", choices=["hybrid", "neural", "classical"], default="classical", help="Baseline engine")
+    parser.add_argument("--engine", choices=["hybrid", "neural", "classical", "rl"], default="hybrid", help="Engine to test")
+    parser.add_argument("--base", choices=["hybrid", "neural", "classical", "rl"], default="classical", help="Baseline engine")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
     parser.add_argument("--concurrency", type=int, default=4, help="Parallel games")
     parser.add_argument("--time", type=float, default=0.1, help="Time limit per move (seconds)")
@@ -138,7 +138,8 @@ def run_benchmark():
     cmd_map = {
         "hybrid": [sys.executable, "-m", "engine.hybrid_mcts_wrapper"],
         "neural": [sys.executable, "-m", "engine.mcts_wrapper"],
-        "classical": [sys.executable, "-m", "engine.alphabeta_wrapper"]
+        "classical": [sys.executable, "-m", "engine.alphabeta_wrapper"],
+        "rl": [sys.executable, "-m", "engine.rl_mcts_wrapper"]
     }
     
     engine_cmd = cmd_map[args.engine]

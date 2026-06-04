@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import chess
 import math
+import time
 from engine.encoder import BoardEncoder
 
 class MCTSNode:
@@ -14,7 +15,6 @@ class MCTSNode:
         self.visit_count = 0
         self.value_sum = 0
         self.prior = prior
-        self.state_tensor = None # To be filled by encoder
 
     @property
     def value(self):
@@ -43,15 +43,10 @@ class MCTSNode:
         return best_action, best_child
 
     def expand(self, board, action_probs):
-        """
-        Expands the node with legal moves and their prior probabilities.
-        action_probs: numpy array of size 4096 (policy head output)
-        """
         for move in board.legal_moves:
             action_index = (move.from_square * 64) + move.to_square
             prior = action_probs[action_index]
             
-            # Create board for the child
             child_board = board.copy()
             child_board.push(move)
             
@@ -71,19 +66,27 @@ class MCTSEngine:
         self.model.to(self.device)
         self.model.eval()
 
-    def search(self, board, iterations=400):
+    def search(self, board, iterations=None, time_limit=None):
+        start_time = time.time()
         root = MCTSNode(board.copy())
         
         # Initial expansion of root
         with torch.no_grad():
             state_tensor = torch.from_numpy(self.encoder.encode(board)).unsqueeze(0).to(self.device)
-            policy_logits, value = self.model(state_tensor)
-            
-            # Apply legality mask and softmax
+            policy_logits, _ = self.model(state_tensor)
             probs = self._get_legal_probs(board, policy_logits[0].cpu().numpy())
             root.expand(board, probs)
 
-        for _ in range(iterations):
+        count = 0
+        while True:
+            # Check stopping conditions
+            if iterations and count >= iterations:
+                break
+            if time_limit and (time.time() - start_time) >= time_limit:
+                break
+            if not iterations and not time_limit and count >= 400: # Default fallback
+                break
+                
             node = root
             search_board = board.copy()
 
@@ -102,7 +105,6 @@ class MCTSEngine:
                     node.expand(search_board, probs)
                     value = value_tensor.item()
             else:
-                # Terminal node evaluation
                 res = search_board.result()
                 if res == "1-0":
                     value = 1.0 if search_board.turn == chess.BLACK else -1.0
@@ -112,31 +114,25 @@ class MCTSEngine:
                     value = 0.0
 
             # 3. Backpropagate
-            # Value is from the perspective of the player at the leaf node.
-            # We need to flip it at each level of the tree.
-            curr_value = value
+            curr_value = -value
             while node:
                 node.value_sum += curr_value
                 node.visit_count += 1
-                curr_value = -curr_value # Flip perspective
+                curr_value = -curr_value
                 node = node.parent
+            
+            count += 1
 
-        # Return the best move (most visited)
+        if not root.children:
+            return None
         best_action = max(root.children.items(), key=lambda x: x[1].visit_count)[0]
         return self.encoder.decode_move(best_action, board)
 
     def _get_legal_probs(self, board, logits):
-        """
-        Masks illegal moves and applies softmax.
-        """
         mask = np.zeros(4096, dtype=bool)
         for move in board.legal_moves:
             idx = (move.from_square * 64) + move.to_square
             mask[idx] = True
-            
-        # Set illegal logits to very small number
         logits[~mask] = -1e10
-        
-        # Softmax
         e_x = np.exp(logits - np.max(logits))
         return e_x / e_x.sum()
