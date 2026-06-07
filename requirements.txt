@@ -8,3 +8,4 @@ pandas==2.2.0
 datasets==2.16.1
 psutil==5.9.8
 pynvml==11.5.0
+tqdm==4.66.1

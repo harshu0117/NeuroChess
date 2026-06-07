@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from neural.model import ChessResNet
 from neural.dataset import ChessDataset
 
@@ -27,7 +28,8 @@ def train(csv_path, model_save_path, epochs=10, batch_size=64, lr=0.001):
         policy_loss_sum = 0
         value_loss_sum = 0
         
-        for batch_idx, (states, policy_targets, value_targets) in enumerate(dataloader):
+        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}")
+        for states, policy_targets, value_targets in pbar:
             states = states.to(device)
             policy_targets = policy_targets.to(device)
             value_targets = value_targets.to(device)
@@ -51,8 +53,7 @@ def train(csv_path, model_save_path, epochs=10, batch_size=64, lr=0.001):
             policy_loss_sum += p_loss.item()
             value_loss_sum += v_loss.item()
             
-            if batch_idx % 100 == 0:
-                print(f"Epoch {epoch+1}/{epochs} | Batch {batch_idx}/{len(dataloader)} | Loss: {loss.item():.4f}")
+            pbar.set_postfix({"loss": f"{loss.item():.4f}"})
         
         avg_loss = total_loss / len(dataloader)
         print(f"Epoch {epoch+1} Complete. Avg Loss: {avg_loss:.4f} (Policy: {policy_loss_sum/len(dataloader):.4f}, Value: {value_loss_sum/len(dataloader):.4f})")
