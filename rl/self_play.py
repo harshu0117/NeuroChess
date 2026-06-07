@@ -32,7 +32,8 @@ class SelfPlay:
             game_history.append({
                 'state': state_tensor,
                 'turn': board.turn,
-                'move_idx': self.encoder.encode_move(move)
+                'move_idx': self.encoder.encode_move(move, board)
+
             })
             board.push(move)
             move_count += 1
@@ -68,7 +69,7 @@ class SelfPlay:
         optimizer.step()
         return loss.item()
 
-def run_rl_finetuning(num_games=20, train_frequency=2, model_path="models/supervised_base.pt"):
+def run_rl_finetuning(num_games=200, train_frequency=10, model_path="models/supervised_base.pt"):
     print(f"🌟 Starting Reinforcement Learning Fine-Tuning ({num_games} games)...")
     model = ChessResNet()
     encoder = BoardEncoder()
@@ -78,7 +79,7 @@ def run_rl_finetuning(num_games=20, train_frequency=2, model_path="models/superv
     except:
         print("⚠️ Warning: No base weights found.")
     
-    sp = SelfPlay(model, encoder, iterations=100) 
+    sp = SelfPlay(model, encoder, iterations=400) 
     pbar = tqdm(total=num_games, desc="RL Progress", unit="game")
     
     for i in range(num_games):

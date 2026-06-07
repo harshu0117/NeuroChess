@@ -56,7 +56,7 @@ class ChessDataset(Dataset):
                 # For now, let's use the first legal move as a fallback
                 move = list(board.legal_moves)[0]
                 
-        policy_target = self.encoder.encode_move(move)
+        policy_target = self.encoder.encode_move(move, board)
         
         # 3. Encode Value Target (z)
         value_target = result if board.turn == chess.WHITE else -result

@@ -54,26 +54,37 @@ class BoardEncoder:
             
         return tensor
 
-    def encode_move(self, move: chess.Move):
+    def encode_move(self, move: chess.Move, board: chess.Board):
         """
         Maps a chess.Move to a flat index in the 4,096 action space.
-        Action Index = (from_square * 64) + to_square
+        If it's Black's turn, we must flip the move coordinates to match the flipped board perspective.
         """
-        return (move.from_square * 64) + move.to_square
+        from_sq = move.from_square
+        to_sq = move.to_square
+        
+        if board.turn == chess.BLACK:
+            from_sq = chess.square(chess.square_file(from_sq), 7 - chess.square_rank(from_sq))
+            to_sq = chess.square(chess.square_file(to_sq), 7 - chess.square_rank(to_sq))
+            
+        return (from_sq * 64) + to_sq
 
     def decode_move(self, action_index: int, board: chess.Board):
         """
         Maps a 4,096 action index back to a chess.Move object.
-        Includes basic promotion handling (default to Queen).
+        If it's Black's turn, we must flip the move coordinates back.
         """
-        from_square = action_index // 64
-        to_square = action_index % 64
+        from_sq = action_index // 64
+        to_sq = action_index % 64
         
-        move = chess.Move(from_square, to_square)
+        if board.turn == chess.BLACK:
+            from_sq = chess.square(chess.square_file(from_sq), 7 - chess.square_rank(from_sq))
+            to_sq = chess.square(chess.square_file(to_sq), 7 - chess.square_rank(to_sq))
+            
+        move = chess.Move(from_sq, to_sq)
         
-        # Handle Pawn Promotion (Strictly Queen as per instructions)
-        if board.piece_at(from_square) and board.piece_at(from_square).piece_type == chess.PAWN:
-            if chess.square_rank(to_square) in [0, 7]:
+        # Handle Pawn Promotion
+        if board.piece_at(from_sq) and board.piece_at(from_sq).piece_type == chess.PAWN:
+            if chess.square_rank(to_sq) in [0, 7]:
                 move.promotion = chess.QUEEN
                 
         return move

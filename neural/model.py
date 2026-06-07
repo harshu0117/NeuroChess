@@ -19,26 +19,26 @@ class ResidualBlock(nn.Module):
         return out
 
 class ChessResNet(nn.Module):
-    def __init__(self, num_res_blocks=4):
+    def __init__(self, num_res_blocks=12): # Increased from 4
         super(ChessResNet, self).__init__()
         
-        # Input Block: 13 channels -> 64 filters
-        self.conv_input = nn.Conv2d(13, 64, kernel_size=3, padding=1)
-        self.bn_input = nn.BatchNorm2d(64)
+        # Input Block: 13 channels -> 128 filters (increased from 64)
+        self.conv_input = nn.Conv2d(13, 128, kernel_size=3, padding=1)
+        self.bn_input = nn.BatchNorm2d(128)
         
         # Residual Core
-        self.res_blocks = nn.ModuleList([ResidualBlock(64, 64) for _ in range(num_res_blocks)])
+        self.res_blocks = nn.ModuleList([ResidualBlock(128, 128) for _ in range(num_res_blocks)])
         
         # Policy Head
-        self.policy_conv = nn.Conv2d(64, 2, kernel_size=1)
+        self.policy_conv = nn.Conv2d(128, 2, kernel_size=1)
         self.policy_bn = nn.BatchNorm2d(2)
         self.policy_fc = nn.Linear(2 * 8 * 8, 4096)
         
         # Value Head
-        self.value_conv = nn.Conv2d(64, 1, kernel_size=1)
+        self.value_conv = nn.Conv2d(128, 1, kernel_size=1)
         self.value_bn = nn.BatchNorm2d(1)
-        self.value_fc1 = nn.Linear(1 * 8 * 8, 64)
-        self.value_fc2 = nn.Linear(64, 1)
+        self.value_fc1 = nn.Linear(1 * 8 * 8, 128)
+        self.value_fc2 = nn.Linear(128, 1)
 
     def forward(self, x):
         # Input block

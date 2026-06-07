@@ -42,9 +42,9 @@ class MCTSNode:
 
         return best_action, best_child
 
-    def expand(self, board, action_probs):
+    def expand(self, board, action_probs, encoder):
         for move in board.legal_moves:
-            action_index = (move.from_square * 64) + move.to_square
+            action_index = encoder.encode_move(move, board)
             prior = action_probs[action_index]
             
             child_board = board.copy()
@@ -75,7 +75,7 @@ class MCTSEngine:
             state_tensor = torch.from_numpy(self.encoder.encode(board)).unsqueeze(0).to(self.device)
             policy_logits, _ = self.model(state_tensor)
             probs = self._get_legal_probs(board, policy_logits[0].cpu().numpy())
-            root.expand(board, probs)
+            root.expand(board, probs, self.encoder)
 
         count = 0
         while True:
@@ -84,7 +84,7 @@ class MCTSEngine:
                 break
             if time_limit and (time.time() - start_time) >= time_limit:
                 break
-            if not iterations and not time_limit and count >= 400: # Default fallback
+            if not iterations and not time_limit and count >= 1600: # Increased from 400
                 break
                 
             node = root
@@ -102,7 +102,7 @@ class MCTSEngine:
                     policy_logits, value_tensor = self.model(state_tensor)
                     
                     probs = self._get_legal_probs(search_board, policy_logits[0].cpu().numpy())
-                    node.expand(search_board, probs)
+                    node.expand(search_board, probs, self.encoder)
                     value = value_tensor.item()
             else:
                 res = search_board.result()
@@ -131,7 +131,7 @@ class MCTSEngine:
     def _get_legal_probs(self, board, logits):
         mask = np.zeros(4096, dtype=bool)
         for move in board.legal_moves:
-            idx = (move.from_square * 64) + move.to_square
+            idx = self.encoder.encode_move(move, board)
             mask[idx] = True
         logits[~mask] = -1e10
         e_x = np.exp(logits - np.max(logits))
