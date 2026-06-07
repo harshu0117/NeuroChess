@@ -7,35 +7,86 @@ import math
 import requests
 import zipfile
 import shutil
+import time
+import psutil
+import threading
+import torch
+
+try:
+    import pynvml
+    HAS_NVML = True
+except ImportError:
+    HAS_NVML = False
+
+class ResourceMonitor(threading.Thread):
+    def __init__(self, interval=1.0):
+        super().__init__()
+        self.interval = interval
+        self.running = True
+        self.history = []
+        if HAS_NVML:
+            try:
+                pynvml.nvmlInit()
+                self.handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            except:
+                self.handle = None
+        else:
+            self.handle = None
+
+    def run(self):
+        while self.running:
+            stats = {
+                "timestamp": time.time(),
+                "cpu_percent": psutil.cpu_percent(),
+                "memory_percent": psutil.virtual_memory().percent,
+                "memory_used_gb": psutil.virtual_memory().used / (1024**3)
+            }
+            if self.handle:
+                try:
+                    util = pynvml.nvmlDeviceGetUtilizationRates(self.handle)
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(self.handle)
+                    stats["gpu_percent"] = util.gpu
+                    stats["gpu_mem_percent"] = (mem.used / mem.total) * 100
+                except:
+                    pass
+            self.history.append(stats)
+            time.sleep(self.interval)
+
+    def stop(self):
+        self.running = False
+        if HAS_NVML:
+            try: pynvml.nvmlShutdown()
+            except: pass
 
 def download_tools():
     """
     Downloads Stockfish and Cutechess-CLI if they aren't present.
-    Note: Paths are optimized for Linux/Kaggle environments.
     """
-    # 1. Download Stockfish (Linux version for Kaggle)
     if not os.path.exists("./stockfish"):
         print("📥 Downloading Stockfish...")
         sf_url = "https://github.com/official-stockfish/Stockfish/releases/latest/download/stockfish-ubuntu-x86-64-avx2.tar"
-        # Simplification for script: assuming wget/curl is available in Kaggle
         os.system(f"wget -q {sf_url} -O stockfish.tar && tar -xf stockfish.tar && mv stockfish-ubuntu-x86-64-avx2 stockfish && chmod +x stockfish")
 
-    # 2. Download Cutechess-CLI
     if not os.path.exists("./cutechess-cli"):
         print("📥 Downloading Cutechess-CLI...")
-        # URL for a portable Linux x64 build
         cc_url = "https://github.com/cutechess/cutechess/releases/download/1.3.1/cutechess-1.3.1-linux64.tar.gz"
         os.system(f"wget -q {cc_url} -O cutechess.tar.gz && tar -xzf cutechess.tar.gz && mv cutechess-1.3.1-linux64/cutechess-cli . && chmod +x cutechess-cli")
 
 def run_match(engine_path, sf_path, sf_elo, games=200):
     """
-    Runs a match between our engine and Stockfish at a specific Elo.
+    Runs a match with telemetry monitoring.
     """
     report_file = f"reports/match_sf_{sf_elo}.txt"
-    print(f"⚔️ Starting match against Stockfish {sf_elo} Elo ({games} games)...")
+    print(f"\n{'='*60}")
+    print(f" ⚔️ MATCH: ResNetEngine vs Stockfish {sf_elo}")
+    print(f" GAMES: {games}")
+    print(f"{'='*60}")
     
-    # Construct cutechess-cli command
-    # Using internal Stockfish UCI 'Skill Level' or 'UCI_Elo' if supported
+    monitor = ResourceMonitor()
+    monitor.start()
+    
+    start_time = time.time()
+    
     cmd = [
         "./cutechess-cli",
         "-engine", f"name=ResNetEngine", f"cmd={sys.executable}", f"arg=engine/uci_wrapper.py",
@@ -55,17 +106,39 @@ def run_match(engine_path, sf_path, sf_elo, games=200):
             f.write(line)
         process.wait()
     
-    return parse_results(report_file)
+    end_time = time.time()
+    monitor.stop()
+    monitor.join()
+    
+    duration = end_time - start_time
+    
+    # Calculate telemetry averages
+    if monitor.history:
+        avg_cpu = sum(s["cpu_percent"] for s in monitor.history) / len(monitor.history)
+        avg_mem = sum(s["memory_used_gb"] for s in monitor.history) / len(monitor.history)
+        max_gpu = max([s.get("gpu_percent", 0) for s in monitor.history]) if HAS_NVML and monitor.handle else 0
+    else:
+        avg_cpu, avg_mem, max_gpu = 0, 0, 0
+
+    print(f"\n 📊 TELEMETRY for SF_{sf_elo}:")
+    print(f" - Duration: {duration:.2f}s")
+    print(f" - Avg CPU: {avg_cpu:.1f}%")
+    print(f" - Avg RAM: {avg_mem:.2f} GB")
+    if HAS_NVML: print(f" - Max GPU: {max_gpu:.1f}%")
+    
+    results = parse_results(report_file)
+    if results:
+        results["telemetry"] = {
+            "duration": duration,
+            "avg_cpu": avg_cpu,
+            "avg_ram": avg_mem,
+            "max_gpu": max_gpu
+        }
+    return results
 
 def parse_results(file_path):
-    """
-    Extracts W/L/D from cutechess output.
-    """
     with open(file_path, "r") as f:
         content = f.read()
-    
-    # Look for "Finished match" line
-    # Finished match between ResNetEngine and Stockfish_1200: 45-140-15 [0.262] 200
     import re
     match = re.search(r"Finished match between .*?: (\d+)-(\d+)-(\d+)", content)
     if match:
@@ -87,6 +160,7 @@ def main():
     parser.add_argument("--games-per-level", type=int, default=200)
     args = parser.parse_args()
 
+    os.makedirs("reports", exist_ok=True)
     download_tools()
     
     levels = [1200, 1500, 1800, 2000, 2200]
@@ -105,7 +179,6 @@ def main():
             final_results[elo] = res
             print(f"✅ Performance against SF {elo}: {perf_elo:.0f} Elo")
 
-    # Aggregate Final Elo Estimate
     if final_results:
         avg_elo = sum(r['performance_elo'] for r in final_results.values()) / len(final_results)
         print("\n" + "="*40)
@@ -113,7 +186,11 @@ def main():
         print("="*40)
         
         with open("reports/professional_benchmark.json", "w") as f:
-            json.dump({"results": final_results, "final_estimate": avg_elo}, f, indent=4)
+            json.dump({
+                "results": final_results, 
+                "final_estimate": avg_elo,
+                "timestamp": time.ctime()
+            }, f, indent=4)
 
 if __name__ == "__main__":
     main()
