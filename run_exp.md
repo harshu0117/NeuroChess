@@ -73,6 +73,7 @@ def train_supervised(csv_path, model_save_path, epochs=12, batch_size=2048, lr=0
             pbar.set_postfix({"loss": f"{loss.item():.4f}"})
         
         print(f"Epoch {epoch+1} Avg Loss: {total_loss/len(dataloader):.4f}")
+        os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
         torch.save(model.state_dict(), model_save_path)
 
 DATA_PATH = 'data/maia_chess.csv'

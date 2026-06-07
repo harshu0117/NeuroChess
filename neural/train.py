@@ -59,6 +59,7 @@ def train(csv_path, model_save_path, epochs=10, batch_size=64, lr=0.001):
         print(f"Epoch {epoch+1} Complete. Avg Loss: {avg_loss:.4f} (Policy: {policy_loss_sum/len(dataloader):.4f}, Value: {value_loss_sum/len(dataloader):.4f})")
         
         # Save checkpoint
+        os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
         torch.save(model.state_dict(), model_save_path)
 
 if __name__ == "__main__":
