@@ -69,7 +69,7 @@ class SelfPlay:
         optimizer.step()
         return loss.item()
 
-def run_rl_finetuning(num_games=1000, train_frequency=10, model_path="models/supervised_base.pt"):
+def run_rl_finetuning(num_games=20, train_frequency=10, model_path="models/supervised_base.pt"):
     print(f"🌟 Starting Reinforcement Learning Fine-Tuning ({num_games} games)...")
     model = ChessResNet()
     encoder = BoardEncoder()
@@ -95,4 +95,4 @@ def run_rl_finetuning(num_games=1000, train_frequency=10, model_path="models/sup
     print(f"🎉 RL Fine-tuning complete! Weights saved to {save_path}")
 
 if __name__ == "__main__":
-    run_rl_finetuning(num_games=1000)
+    run_rl_finetuning(num_games=20)
