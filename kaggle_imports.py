@@ -2,7 +2,7 @@
 # This cell installs dependencies and imports all necessary modules for the project.
 
 # 1. Install Dependencies
-!pip install -q chess torch numpy streamlit fastapi uvicorn pandas datasets psutil pynvml tqdm
+# !pip install -q chess torch numpy streamlit fastapi uvicorn pandas datasets psutil pynvml tqdm
 
 import os
 import sys
